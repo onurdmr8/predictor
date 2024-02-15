@@ -13,7 +13,6 @@ import numpy as np
 from decimal import Decimal
 from pmdarima import auto_arima as arm
 from tabulate import tabulate
-from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPRegressor
 from sklearn.metrics import mean_squared_error
 import tkinter as tk
@@ -26,6 +25,12 @@ from sklearn.model_selection import RandomizedSearchCV
 from sklearn.neural_network import MLPRegressor
 from tqdm import tqdm
 import pandas_ta as ta
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
+import numpy as np
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
 warnings.filterwarnings("ignore")
 
 
@@ -102,7 +107,7 @@ end = datetime.now() + timedelta(days=2)
 end = end.strftime("%Y-%m-%d")
 endcontrol = (datetime.now()).strftime("%Y-%m-%d")
 enddate = str(endcontrol)+" 00:00:00"
-startdate = datetime.now() - timedelta(days=500)
+startdate = datetime.now() - timedelta(days=700)
 startdate = startdate.strftime("%Y-%m-%d")
 
 def send_telegram_message(message):
@@ -410,8 +415,8 @@ def indikator():
     c=pairs_list
     symbols = c
     random.shuffle(symbols)
-    aralık = 24
-    interval = "1h"
+    aralık = 7
+    interval = "1d"
     if symbols==pairs_list:
         dif=70
         rms=0.2
@@ -428,7 +433,7 @@ def indikator():
     symbols = [symbol for symbol in symbols if "BEAR" not in symbol]
     symbols = [symbol for symbol in symbols if "UP" not in symbol]
     symbols = [symbol for symbol in symbols if "BULL" not in symbol]
-    rmse_df = pd.DataFrame(columns=['Symbol'])
+
     say=0
     say2=str(len(symbols))
 
@@ -452,7 +457,118 @@ def indikator():
 
 
             if (df['Date'][-1]).strftime('%Y-%m-%d') == ((datetime.now())).strftime('%Y-%m-%d'):
+                # Giriş verilerini ve hedef değişkeni ayarlayın
+                X = df.iloc[:-aralık][['Close']].values
+                y = df['target'].dropna().values
 
+                # Veriyi eğitim ve test setlerine bölelim
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=testsize, train_size=trainsize)
+
+                # Hiperparametre dağılımını belirle
+                param_dist = {
+                    'hidden_layer_sizes': [(100,), (200,), (500,), (100, 100), (200, 200), (500, 500), (300, 200),
+                                           (200, 200)],
+                    'max_iter': randint(500, 1500),
+                    'learning_rate': ['constant', 'adaptive'],
+                    'activation': ['relu', 'tanh']
+                }
+
+                # MLPRegressor modelini oluştur
+                mlp = MLPRegressor()
+
+                # RandomizedSearchCV kullanarak en iyi parametreleri bul
+                random_search = RandomizedSearchCV(mlp, param_distributions=param_dist, n_iter=10, cv=5,
+                                                   random_state=None)
+                random_search.fit(X_train, y_train)
+                print(random_search.best_params_)
+                param = random_search.best_params_
+
+                mlp = MLPRegressor(**param)
+
+                mlp.fit(X_train, y_train)
+
+                # 10 gün sonrası için tahmin yapın
+                last_price = df['Close'].iloc[-1]
+                forecast = []
+                y_pred = mlp.predict(X_test)
+
+                # Calculate Mean Squared Error
+                mse = mean_squared_error(y_test, y_pred)
+
+                # Calculate Root Mean Squared Error
+                rmse = np.sqrt(mse)
+                for i in range(aralık):
+                    forecast.append(mlp.predict([[last_price]])[0])
+                    last_price = forecast[-1]
+
+                # lineer regresyon
+                X = df[['Low', 'High']]
+                y = df['Close']
+
+                # Impute missing values if any
+                imputer = SimpleImputer(strategy='mean')
+                X_imputed = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
+
+                # Create a linear regression model
+                model = LinearRegression()
+
+                # Fit the model on the imputed data
+                model.fit(X_imputed, y)
+
+                # Generate features for the next 10 days
+                last_date = df['Date'].max()
+                future_date_10th = last_date + timedelta(days=aralık)
+                future_features_10th = pd.DataFrame(index=[future_date_10th], columns=['Low', 'High'])
+                # You might need to set appropriate values for 'Low' and 'High' in future_features_10th based on your domain knowledge.
+
+                # Impute missing values for the 10th day features
+                future_features_10th_imputed = pd.DataFrame(imputer.transform(future_features_10th),
+                                                            columns=future_features_10th.columns)
+
+                # Predict the 'Close' price for the 10th day
+                forecast = model.predict(future_features_10th_imputed)[0]
+
+                # Evaluate the model using RMSE
+                X_train, X_test, y_train, y_test = train_test_split(X_imputed, y, test_size=0.2, random_state=42)
+                y_pred = model.predict(X_test)
+                rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+
+                print(f'RMSE: {rmse}')
+
+                # Show forecast only if RMSE is below 0.2
+                if rmse < 0.2:
+                    print(f'Forecasted Close Price : {forecast}')
+                    if float(df['Close'][-1]) < float(forecast):
+                        difference=((float(forecast)-float(df['Close'][-1]))/float(df['Close'][-1]))*100
+                        print(Fore.GREEN + 'Lineer Regresyon : yükselecek Değişim: '+ str(difference)+  "--->Hedef Fiyat:"+ str(forecast)+ Style.RESET_ALL)
+                        message5='Lineer Regresyon : yükselecek Değişim: '+ str(difference) + "--->Hedef Fiyat:"+ str(forecast)
+                    else:
+                        print('Yükseliş yok')
+                        message5=''
+                else:
+                    print('RMSE is above 0.2, and forecast is not shown.')
+                    message5=''
+
+
+                window = 20
+                num_std_dev = 2
+                # Hareketli ortalama hesapla
+                data['Rolling Mean'] = data['Close'].rolling(window=window).mean()
+
+                # Hareketli ortalama etrafındaki standart sapma hesapla
+                data['Upper Band'] = data['Rolling Mean'] + (data['Close'].rolling(window=window).std() * num_std_dev)
+                data['Lower Band'] = data['Rolling Mean'] - (data['Close'].rolling(window=window).std() * num_std_dev)
+
+                # Alım-Satım sinyallerini belirle
+                data['Signal'] = 0  # 0: Hiçbir işlem yok, 1: Alım, -1: Satım
+
+                # Alım sinyali
+                data.loc[data['Close'] < data['Lower Band'], 'Signal'] = 1
+
+                # Satım sinyali
+                data.loc[data['Close'] > data['Upper Band'], 'Signal'] = -1
+                signal=data['Signal'].iloc[-1]
+                print(Fore.GREEN + "Bolinger Sinyal: " + str(signal) + Style.RESET_ALL)
 
                 n=9
                 m1 = 3
@@ -468,7 +584,32 @@ def indikator():
                 last_j = df['%J'].iloc[-1]
                 last_d = df['%D'].iloc[-1]
                 last_k = df['%K'].iloc[-1]
+                #stokastik
+                k_period = 14
+                d_period = 3
+                # Hesaplamaları yap
+                data['Lowest_Low'] = data['Low'].rolling(window=k_period).min()
+                data['Highest_High'] = data['High'].rolling(window=k_period).max()
+                data['%K'] = 100 * ((data['Close'] - data['Lowest_Low']) / (data['Highest_High'] - data['Lowest_Low']))
+                data['%D'] = data['%K'].rolling(window=d_period).mean()
+                signals = []
+                position = None
 
+                for i in range(1, len(data)):
+                    # Alım sinyali
+                    if data['%K'][i] < 20 and data['%D'][i] < 20 and data['%K'][i - 1] >= data['%D'][i - 1]:
+                        signals.append('AL')
+                        position = 'UZUN'  # Uzun pozisyon alındı
+                    # Satış sinyali
+                    elif data['%K'][i] > 80 and data['%D'][i] > 80 and data['%K'][i - 1] <= data['%D'][i - 1]:
+                        signals.append('SAT')
+                        position = 'KISA'  # Kısa pozisyon alındı
+                    else:
+                        signals.append('BEKLE')
+                print(Fore.LIGHTGREEN_EX + "STOKASTİK Osilatör:",signals[-1]+Style.RESET_ALL)
+                if signals[-1]=='AL':
+                    messagestokastik=symbol+" STOKASTİK AL SİNYALİ"+"fiyat:"+forecast
+                    send_telegram_message(messagestokastik)
                 period = 10
                 multiplier = 3
 
@@ -507,6 +648,7 @@ def indikator():
                 data['Sell_Signal'] = ((data['Close'] < data['SuperTrend']) & (
                             data['Close'].shift(1) >= data['SuperTrend'].shift(1))).astype(int)
 
+
                 #calculate rsi
 
                 data['rsi'] = ta.rsi(data['Close'], length=14)
@@ -540,11 +682,11 @@ def indikator():
                     print(Fore.RED + alım_sinyali + Style.RESET_ALL)
 
                 if int(data['Sell_Signal'].iloc[-1])==1:
-                    sinyal = -1
+                    sinyal5 = -1
                     satım_sinyali = "Supertrend : SAT"
                     print(Fore.LIGHTRED_EX + satım_sinyali + Style.RESET_ALL)
                 else:
-                    sinyal = 0
+                    sinyal5 = 0
                     satım_sinyali = "Supertrend : HOLD"
                     print(Fore.BLUE + satım_sinyali + Style.RESET_ALL)
 
@@ -574,14 +716,104 @@ def indikator():
                     message2=" "
                 if str(data['Buy_Signal'].iloc[-1]) == "1":
                     alım_sinyali = "AL"
-                    message4=sinyal+sinyal2+sinyal3+sinyal4
-                    message = symbol + " " + alım_sinyali + " " + message1+ " " + message2 + " " + message3+ " " +"Sinyal Gücü: " + str(message4)+"/4"
+                    message4=sinyal+sinyal2+sinyal3+sinyal4+sinyal5
+                    message = (symbol + " " + alım_sinyali + " " + message1+ " " + message2 + " " +
+                               message3+ " " +"Sinyal Gücü: " + str(message4)+"/4"+" -> "+str(message5))
                     send_telegram_message(message)
-                print("sinyal gücü:"+str(sinyal+sinyal2+sinyal3+sinyal4)+"/4")
+                    print("sinyal gücü:"+str(sinyal+sinyal2+sinyal3+sinyal4)+"/4")
+
             else:
                 print(Fore.RED + "veri hatalı" + Style.RESET_ALL)
         except Exception as e:
             print(e)
 
+def macd():
+    api_key = 'RjCgL26lL8GoDagHA4Pb2wFC9414Oenhp5oGOfQMJrCJbWpU9yBtMPofuNAm3cXL'
+    api_secret = 'SGNelarbzwvaFVRpQXhfeX9EPbLFRYIIKi8B2PloNTepvT6Q12LIYsCXbgkn8DGF'
 
-indikator()
+    endpoint = 'https://api.binance.com/api/v3/exchangeInfo'
+
+    def get_usdt_pairs(valid_pairs=None):
+        response = requests.get(endpoint)
+        data = json.loads(response.text)
+
+        usdt_pairs = [symbol['symbol'] for symbol in data['symbols'] if symbol['quoteAsset'] == 'USDT']
+
+        if valid_pairs:
+            usdt_pairs = [pair for pair in usdt_pairs if pair in valid_pairs]
+
+        return usdt_pairs
+
+    def binance_api(endpoint, params=None):
+        headers = {'X-MBX-APIKEY': api_key}
+        response = requests.get(endpoint, headers=headers, params=params)
+        return json.loads(response.text)
+
+    usdt_pairs = get_usdt_pairs()
+    pairs_list = []
+
+    for pair in usdt_pairs:
+        modified_pair = pair
+        pairs_list.append(modified_pair)
+    pairs_list = [eleman.replace("USDT", "-USD") for eleman in pairs_list]
+    b = bist
+    c = pairs_list
+    symbols = c
+    random.shuffle(symbols)
+    aralık = 7
+    interval = "1d"
+    if symbols == pairs_list:
+        dif = 70
+        rms = 0.2
+        testsize = 0.2
+        trainsize = 0.8
+    else:
+        dif = 30
+        rms = 0.2
+        testsize = 0.2
+        trainsize = 0.8
+
+    symbols = [symbol for symbol in symbols if "PERP" not in symbol]
+    symbols = [symbol for symbol in symbols if "DOWN" not in symbol]
+    symbols = [symbol for symbol in symbols if "BEAR" not in symbol]
+    symbols = [symbol for symbol in symbols if "UP" not in symbol]
+    symbols = [symbol for symbol in symbols if "BULL" not in symbol]
+
+    say = 0
+    say2 = str(len(symbols))
+
+    for symbol in symbols:
+        try:
+            say=say+1
+            ilerleme = str(say) + "/" + say2
+
+            print(Fore.MAGENTA + symbol +"-"+Fore.LIGHTBLUE_EX + ilerleme+ Style.RESET_ALL)
+
+            # Finansal verileri indirin
+            data = yf.download(symbol, start=startdate, progress=False, interval=interval, end=end)
+            data['Date'] = data.index
+            data = data.dropna()
+            data = data[['Date', 'Close','Low','High']]
+
+            df = data
+            macd2=df.ta.macd(close='Close', fast=12, slow=26, signal=9, append=True)
+            df["macd"]=macd2["MACD_12_26_9"]
+            df["macd"].fillna("0", inplace = True)
+
+            print(df["macd"].iloc[-1])
+            macd_last=df["macd"].iloc[-1]
+            if macd_last>0:
+                print(Fore.GREEN + "AL" + Style.RESET_ALL)
+            elif macd_last<0:
+                print(Fore.RED + "SAT" + Style.RESET_ALL)
+
+
+
+
+        except Exception as e:
+            print(e)
+            continue
+
+
+
+macd()
