@@ -415,8 +415,8 @@ def indikator():
     c=pairs_list
     symbols = c
     random.shuffle(symbols)
-    aralık = 7
-    interval = "1d"
+    aralık = 48
+    interval = "1h"
     if symbols==pairs_list:
         dif=70
         rms=0.2
@@ -476,7 +476,7 @@ def indikator():
                 # MLPRegressor modelini oluştur
                 mlp = MLPRegressor()
 
-                # RandomizedSearchCV kullanarak en iyi parametreleri bul
+
                 random_search = RandomizedSearchCV(mlp, param_distributions=param_dist, n_iter=10, cv=5,
                                                    random_state=None)
                 random_search.fit(X_train, y_train)
@@ -487,7 +487,6 @@ def indikator():
 
                 mlp.fit(X_train, y_train)
 
-                # 10 gün sonrası için tahmin yapın
                 last_price = df['Close'].iloc[-1]
                 forecast = []
                 y_pred = mlp.predict(X_test)
@@ -505,37 +504,28 @@ def indikator():
                 X = df[['Low', 'High']]
                 y = df['Close']
 
-                # Impute missing values if any
                 imputer = SimpleImputer(strategy='mean')
                 X_imputed = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
 
-                # Create a linear regression model
                 model = LinearRegression()
 
-                # Fit the model on the imputed data
                 model.fit(X_imputed, y)
 
-                # Generate features for the next 10 days
                 last_date = df['Date'].max()
                 future_date_10th = last_date + timedelta(days=aralık)
                 future_features_10th = pd.DataFrame(index=[future_date_10th], columns=['Low', 'High'])
-                # You might need to set appropriate values for 'Low' and 'High' in future_features_10th based on your domain knowledge.
 
-                # Impute missing values for the 10th day features
                 future_features_10th_imputed = pd.DataFrame(imputer.transform(future_features_10th),
                                                             columns=future_features_10th.columns)
 
-                # Predict the 'Close' price for the 10th day
                 forecast = model.predict(future_features_10th_imputed)[0]
 
-                # Evaluate the model using RMSE
                 X_train, X_test, y_train, y_test = train_test_split(X_imputed, y, test_size=0.2, random_state=42)
                 y_pred = model.predict(X_test)
                 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 
                 print(f'RMSE: {rmse}')
 
-                # Show forecast only if RMSE is below 0.2
                 if rmse < 0.2:
                     print(f'Forecasted Close Price : {forecast}')
                     if float(df['Close'][-1]) < float(forecast):
@@ -727,93 +717,91 @@ def indikator():
         except Exception as e:
             print(e)
 
-def macd():
-    api_key = 'RjCgL26lL8GoDagHA4Pb2wFC9414Oenhp5oGOfQMJrCJbWpU9yBtMPofuNAm3cXL'
-    api_secret = 'SGNelarbzwvaFVRpQXhfeX9EPbLFRYIIKi8B2PloNTepvT6Q12LIYsCXbgkn8DGF'
+def tensor():
+    import requests
+    import pandas as pd
+    import numpy as np
+    import tensorflow as tf
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import MinMaxScaler
+    from datetime import datetime, timedelta
 
-    endpoint = 'https://api.binance.com/api/v3/exchangeInfo'
+    # CoinGecko API'sinden coin listesini almak için bir işlev tanımlayalım
+    def get_coin_symbols():
+        url = "https://api.binance.com/api/v3/exchangeInfo"
+        response = requests.get(url)
+        data = response.json()
+        symbols = [symbol['symbol'] for symbol in data['symbols']]
+        return coin_names
 
-    def get_usdt_pairs(valid_pairs=None):
-        response = requests.get(endpoint)
-        data = json.loads(response.text)
+    # CoinGecko API'sinden veri almak için bir işlev tanımlayalım
+    def get_coin_data(coin_symbol, interval, limit):
+        url = f"https://api.binance.com/api/v3/klines?symbol={coin_symbol}&interval={interval}&limit={limit}"
+        response = requests.get(url)
+        data = response.json()
+        df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time',
+                                         'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume',
+                                         'taker_buy_quote_asset_volume', 'ignore'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'],
+                                         unit='ms')  # Unix zaman damgasını datetime nesnesine dönüştürme
+        print(df)
+        return df
 
-        usdt_pairs = [symbol['symbol'] for symbol in data['symbols'] if symbol['quoteAsset'] == 'USDT']
+    # Yapay sinir ağı modelini oluşturma
+    def build_model(input_shape):
+        model = tf.keras.Sequential([
+            tf.keras.layers.Dense(64, activation='relu', input_shape=input_shape),
+            tf.keras.layers.Dense(32, activation='relu'),
+            tf.keras.layers.Dense(1)  # Çıkış katmanı, çünkü regresyon yapıyoruz
+        ])
+        model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+        return model
 
-        if valid_pairs:
-            usdt_pairs = [pair for pair in usdt_pairs if pair in valid_pairs]
+    # Coin verilerini ve fiyat tahminlerini almak için bir fonksiyon tanımlayalım
+    def predict_price_for_coins(coin_ids, interval="1d", limit=360):
+        predictions = {}
 
-        return usdt_pairs
+        for coin_id in coin_ids:
+            coin_id = "BNB" + "USDT"
+            print(coin_id)
+            # Coin verilerini alalım
+            coin_data = get_coin_data(coin_id, interval="1d", limit=360)
 
-    def binance_api(endpoint, params=None):
-        headers = {'X-MBX-APIKEY': api_key}
-        response = requests.get(endpoint, headers=headers, params=params)
-        return json.loads(response.text)
+            # Öznitelikleri ve hedef değişkeni ayarlayalım
+            X = coin_data['timestamp'].values.reshape(-1, 1)  # Zaman damgasını öznitelik olarak kullanacağız
+            y = coin_data['close'].values.reshape(-1, 1)
 
-    usdt_pairs = get_usdt_pairs()
-    pairs_list = []
+            # Veriyi normalize etme
+            scaler = MinMaxScaler()
+            X_scaled = scaler.fit_transform(X)
+            y_scaled = scaler.fit_transform(y)
 
-    for pair in usdt_pairs:
-        modified_pair = pair
-        pairs_list.append(modified_pair)
-    pairs_list = [eleman.replace("USDT", "-USD") for eleman in pairs_list]
-    b = bist
-    c = pairs_list
-    symbols = c
-    random.shuffle(symbols)
-    aralık = 7
-    interval = "1d"
-    if symbols == pairs_list:
-        dif = 70
-        rms = 0.2
-        testsize = 0.2
-        trainsize = 0.8
-    else:
-        dif = 30
-        rms = 0.2
-        testsize = 0.2
-        trainsize = 0.8
+            # Eğitim ve test setlerine ayırma
+            X_train, X_test, y_train, y_test = train_test_split(X_scaled, y_scaled, test_size=0.2, random_state=42)
 
-    symbols = [symbol for symbol in symbols if "PERP" not in symbol]
-    symbols = [symbol for symbol in symbols if "DOWN" not in symbol]
-    symbols = [symbol for symbol in symbols if "BEAR" not in symbol]
-    symbols = [symbol for symbol in symbols if "UP" not in symbol]
-    symbols = [symbol for symbol in symbols if "BULL" not in symbol]
+            # Modeli oluşturma ve eğitme
+            model = build_model(input_shape=(X_train.shape[1],))
+            model.fit(X_train, y_train, epochs=50, batch_size=32, validation_split=0.2, verbose=0)
 
-    say = 0
-    say2 = str(len(symbols))
+            # Tahmin etmek istediğimiz tarihi belirleme
+            today = datetime.now()
+            target_date = today + timedelta(days=10)
 
-    for symbol in symbols:
-        try:
-            say=say+1
-            ilerleme = str(say) + "/" + say2
+            # Tahmini fiyatı alalım
+            target_date_scaled = scaler.transform([[target_date.timestamp()]])
+            predicted_price_scaled = model.predict(target_date_scaled)
+            predicted_price = scaler.inverse_transform(predicted_price_scaled)
 
-            print(Fore.MAGENTA + symbol +"-"+Fore.LIGHTBLUE_EX + ilerleme+ Style.RESET_ALL)
+            # Tahmini fiyatı predictions sözlüğüne ekleyelim
+            predictions[coin_id] = predicted_price[0][0]
 
-            # Finansal verileri indirin
-            data = yf.download(symbol, start=startdate, progress=False, interval=interval, end=end)
-            data['Date'] = data.index
-            data = data.dropna()
-            data = data[['Date', 'Close','Low','High']]
+        return predictions
 
-            df = data
-            macd2=df.ta.macd(close='Close', fast=12, slow=26, signal=9, append=True)
-            df["macd"]=macd2["MACD_12_26_9"]
-            df["macd"].fillna("0", inplace = True)
+    coin_names = get_coin_symbols()
+    predictions = predict_price_for_coins(coin_names)
 
-            print(df["macd"].iloc[-1])
-            macd_last=df["macd"].iloc[-1]
-            if macd_last>0:
-                print(Fore.GREEN + "AL" + Style.RESET_ALL)
-            elif macd_last<0:
-                print(Fore.RED + "SAT" + Style.RESET_ALL)
+    # Tahminleri yazdırma
+    for coin_id, predicted_price in predictions.items():
+        print(f"{coin_id}: Tahmini fiyatı ${predicted_price:.,2f} olarak tahmin ediliyor.")
 
-
-
-
-        except Exception as e:
-            print(e)
-            continue
-
-
-
-macd()
+tensor()
