@@ -477,7 +477,7 @@ def indikator():
                 mlp = MLPRegressor()
 
 
-                random_search = RandomizedSearchCV(mlp, param_distributions=param_dist, n_iter=10, cv=5,
+                random_search = RandomizedSearchCV(mlp, param_distributions=param_dist, n_iter=5, cv=5,
                                                    random_state=None)
                 random_search.fit(X_train, y_train)
                 print(random_search.best_params_)
@@ -717,104 +717,6 @@ def indikator():
         except Exception as e:
             print(e)
 
-def torch():
-    import requests
-    import pandas as pd
-    import numpy as np
-    import torch
-    import torch.nn as nn
-    import torch.optim as optim
-    from sklearn.model_selection import train_test_split
-    from sklearn.preprocessing import MinMaxScaler
-    from datetime import datetime, timedelta
-
-    # CoinGecko API'sinden coin listesini almak için bir işlev tanımlayalım
-    def get_coin_symbols():
-        url = "https://api.binance.com/api/v3/exchangeInfo"
-        response = requests.get(url)
-        data = response.json()
-        symbols = [symbol['symbol'] for symbol in data['symbols']]
-        return symbols
-
-    # CoinGecko API'sinden veri almak için bir işlev tanımlayalım
-    def get_coin_data(coin_symbol, interval, limit):
-        url = f"https://api.binance.com/api/v3/klines?symbol={coin_symbol}&interval={interval}&limit={limit}"
-        response = requests.get(url)
-        data = response.json()
-        df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time',
-                                         'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume',
-                                         'taker_buy_quote_asset_volume', 'ignore'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        return df
-
-    # Yapay sinir ağı modelini oluşturma
-    class NeuralNetwork(nn.Module):
-        def __init__(self, input_size):
-            super(NeuralNetwork, self).__init__()
-            self.fc1 = nn.Linear(input_size, 64)
-            self.fc2 = nn.Linear(64, 32)
-            self.fc3 = nn.Linear(32, 1)
-
-        def forward(self, x):
-            x = torch.relu(self.fc1(x))
-            x = torch.relu(self.fc2(x))
-            x = self.fc3(x)
-            return x
-
-    # Coin verilerini ve fiyat tahminlerini almak için bir fonksiyon tanımlayalım
-    def predict_price_for_coins(coin_symbols, interval="1d", limit=3600):
-        predictions = {}
-
-        for coin_symbol in coin_symbols:
-
-            coin_data = get_coin_data(coin_symbol, interval, limit)
-
-            X = coin_data['timestamp'].values.reshape(-1, 1)
-            y = coin_data['close'].values.reshape(-1, 1)
-
-            scaler = MinMaxScaler()
-            X_scaled = scaler.fit_transform(X)
-            y_scaled = scaler.fit_transform(y)
-
-            X_train, X_test, y_train, y_test = train_test_split(X_scaled, y_scaled,train_size=0.8, test_size=0.2, random_state=0)
-
-            # Tensor dönüşümleri
-            X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-            y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
-
-            input_size = X_train_tensor.shape[1]
-            model = NeuralNetwork(input_size)
-
-            criterion = nn.MSELoss()
-            optimizer = optim.Adam(model.parameters(), lr=0.0000001)
-
-            epochs = 50
-            for epoch in range(epochs):
-                optimizer.zero_grad()
-                outputs = model(y_train_tensor)
-                loss = criterion(outputs, X_train_tensor)
-                loss.backward()
-                optimizer.step()
-
-            today = datetime.now()+timedelta(days=1)
-            target_date = today + timedelta(days=10)
-
-            target_date_scaled = scaler.transform([[target_date.timestamp()]])
-            target_date_tensor = torch.tensor(target_date_scaled, dtype=torch.float32)
-            predicted_price_scaled = model(target_date_tensor)
-            predicted_price = scaler.inverse_transform(predicted_price_scaled.detach().numpy())
-
-            print(predicted_price)
-
-            print(f"{coin_symbol}: Tahmini fiyatı ${(predicted_price).item():,.2f} olarak tahmin ediliyor.")
-        return predictions
-
-    coin_symbols = get_coin_symbols()
-    predictions = predict_price_for_coins(coin_symbols)
-
-    # Tahminleri yazdırma
-    for coin_symbol, predicted_price in predictions.items():
-        print(f"{coin_symbol}: Tahmini fiyatı ${predicted_price/1000:,.2f} olarak tahmin ediliyor.")
 
 
-torch()
+indikator()
