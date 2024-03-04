@@ -103,11 +103,11 @@ bist = [
     "YYLGD.IS", "Z30EA.IS", "Z30KE.IS", "Z30KP.IS", "ZEDUR.IS", "ZELOT.IS", "ZGOLD.IS", "ZOREN.IS", "ZPBDL.IS", "ZPLIB.IS",
     "ZPT10.IS", "ZPX30.IS", "ZRE20.IS", "ZRGYO.IS", "ZTM15.IS"]
 random.shuffle(bist)
-end = datetime.now() + timedelta(days=2)
+end = datetime.now() + timedelta(days=1)
 end = end.strftime("%Y-%m-%d")
 endcontrol = (datetime.now()).strftime("%Y-%m-%d")
 enddate = str(endcontrol)+" 00:00:00"
-startdate = datetime.now() - timedelta(days=700)
+startdate = datetime.now() - timedelta(days=58)
 startdate = startdate.strftime("%Y-%m-%d")
 
 def send_telegram_message(message):
@@ -123,263 +123,6 @@ def send_telegram_message(message):
 
     response = requests.get(url)
     return response
-
-
-def mlp():
-
-    api_key = 'RjCgL26lL8GoDagHA4Pb2wFC9414Oenhp5oGOfQMJrCJbWpU9yBtMPofuNAm3cXL'
-    api_secret = 'SGNelarbzwvaFVRpQXhfeX9EPbLFRYIIKi8B2PloNTepvT6Q12LIYsCXbgkn8DGF'
-
-    endpoint = 'https://api.binance.com/api/v3/exchangeInfo'
-
-    def get_usdt_pairs(valid_pairs=None):
-        response = requests.get(endpoint)
-        data = json.loads(response.text)
-
-        usdt_pairs = [symbol['symbol'] for symbol in data['symbols'] if symbol['quoteAsset'] == 'USDT']
-
-        if valid_pairs:
-            usdt_pairs = [pair for pair in usdt_pairs if pair in valid_pairs]
-
-        return usdt_pairs
-
-    def binance_api(endpoint, params=None):
-        headers = {'X-MBX-APIKEY': api_key}
-        response = requests.get(endpoint, headers=headers, params=params)
-        return json.loads(response.text)
-
-    usdt_pairs = get_usdt_pairs()
-    pairs_list = []
-
-    for pair in usdt_pairs:
-        modified_pair = pair
-        pairs_list.append(modified_pair)
-    pairs_list = [eleman.replace("USDT", "-USD") for eleman in pairs_list]
-    b=bist
-    c=pairs_list
-    symbols = c
-    random.shuffle(symbols)
-    aralık = 10
-    interval = "1d"
-    if symbols==pairs_list:
-        dif=70
-        rms=0.2
-        testsize=0.2
-        trainsize=0.8
-    else:
-        dif=30
-        rms=0.2
-        testsize=0.2
-        trainsize=0.8
-
-    symbols = [symbol for symbol in symbols if "PERP" not in symbol]
-    symbols = [symbol for symbol in symbols if "DOWN" not in symbol]
-    symbols = [symbol for symbol in symbols if "BEAR" not in symbol]
-    symbols = [symbol for symbol in symbols if "UP" not in symbol]
-    symbols = [symbol for symbol in symbols if "BULL" not in symbol]
-    rmse_df = pd.DataFrame(columns=['Symbol'])
-    say=0
-    say2=str(len(symbols))
-
-    for symbol in symbols:
-        try:
-            say=say+1
-            ilerleme = str(say) + "/" + say2
-
-            print(Fore.MAGENTA + symbol +"-"+Fore.LIGHTBLUE_EX + ilerleme+ Style.RESET_ALL)
-
-            # Finansal verileri indirin
-            data = yf.download(symbol, start=startdate, progress=False, interval=interval, end=end)
-            data['Date'] = data.index
-            data = data.dropna()
-            data = data[['Date', 'Close','Low','High']]
-
-            df = data
-
-            # Fiyat verilerini 10 gün kaydır
-            df['target'] = df['Close'].shift(-aralık)
-
-
-            if (df['Date'][-1]).strftime('%Y-%m-%d') == ((datetime.now())).strftime('%Y-%m-%d'):
-                # Giriş verilerini ve hedef değişkeni ayarlayın
-                X = df.iloc[:-aralık][['Close']].values
-                y = df['target'].dropna().values
-
-                # Veriyi eğitim ve test setlerine bölelim
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=testsize,train_size=trainsize)
-
-
-                # Hiperparametre dağılımını belirle
-                param_dist = {
-                    'hidden_layer_sizes': [(100,), (200,), (500,), (100, 100), (200, 200), (500, 500), (300, 200), (200, 200)],
-                    'max_iter': randint(500, 1500),
-                    'learning_rate': ['constant', 'adaptive'],
-                    'activation': ['relu', 'tanh']
-                }
-
-                # MLPRegressor modelini oluştur
-                mlp = MLPRegressor()
-
-                # RandomizedSearchCV kullanarak en iyi parametreleri bul
-                random_search = RandomizedSearchCV(mlp, param_distributions=param_dist, n_iter=10, cv=5, random_state=None)
-                random_search.fit(X_train, y_train)
-                print(random_search.best_params_)
-                param=random_search.best_params_
-
-                mlp = MLPRegressor(**param)
-
-                mlp.fit(X_train, y_train)
-
-                # 10 gün sonrası için tahmin yapın
-                last_price = df['Close'].iloc[-1]
-                forecast = []
-                y_pred = mlp.predict(X_test)
-
-                # Calculate Mean Squared Error
-                mse = mean_squared_error(y_test, y_pred)
-
-                # Calculate Root Mean Squared Error
-                rmse = np.sqrt(mse)
-                for i in range(aralık):
-                    forecast.append(mlp.predict([[last_price]])[0])
-                    last_price = forecast[-1]
-
-                n=9
-                m1 = 3
-                m2 = 3
-                df['Lowest_Low'] = df['Low'].rolling(window=n).min()
-                df['Highest_High'] = df['High'].rolling(window=n).max()
-
-                df['%K'] = ((df['Close'] - df['Lowest_Low']) / (df['Highest_High'] - df['Lowest_Low'])) * 100
-                df['%D'] = df['%K'].rolling(window=m1).mean()
-                df['%J'] = 3 * df['%K'] - 2 * df['%D']
-
-                # Son %J değerini kontrol etme
-                last_j = df['%J'].iloc[-1]
-                last_d = df['%D'].iloc[-1]
-                last_k = df['%K'].iloc[-1]
-
-                period = 10
-                multiplier = 3
-
-                data['TR'] = 0.0
-                data['ATR'] = 0.0
-                data['UpperBand'] = 0.0
-                data['LowerBand'] = 0.0
-                data['SuperTrend'] = 0.0
-                data['Position'] = 0
-
-                for i in range(1, len(data)):
-                    data['TR'].iloc[i] = max(data['High'].iloc[i] - data['Low'].iloc[i],
-                                             abs(data['High'].iloc[i] - data['Close'].iloc[i - 1]),
-                                             abs(data['Low'].iloc[i] - data['Close'].iloc[i - 1]))
-
-                    if i > period:
-                        data['ATR'].iloc[i] = (data['ATR'].iloc[i - 1] * (period - 1) + data['TR'].iloc[i]) / period
-                    else:
-                        data['ATR'].iloc[i] = data['TR'].iloc[1:i + 1].mean()
-
-                    data['UpperBand'].iloc[i] = data['Close'].iloc[i - 1] + multiplier * data['ATR'].iloc[i]
-                    data['LowerBand'].iloc[i] = data['Close'].iloc[i - 1] - multiplier * data['ATR'].iloc[i]
-
-                    if data['Close'].iloc[i] > data['UpperBand'].iloc[i]:
-                        data['SuperTrend'].iloc[i] = data['LowerBand'].iloc[i]
-                        data['Position'].iloc[i] = 1  # Long position
-                    elif data['Close'].iloc[i] < data['LowerBand'].iloc[i]:
-                        data['SuperTrend'].iloc[i] = data['UpperBand'].iloc[i]
-                        data['Position'].iloc[i] = -1  # Short position
-                    else:
-                        data['SuperTrend'].iloc[i] = data['SuperTrend'].iloc[i - 1]
-                        data['Position'].iloc[i] = 0  # No position
-                # Önceki örneği kullanarak alım ve satım sinyallerini ekleyin
-                data['Buy_Signal'] = ((data['Close'] > data['SuperTrend']) & (
-                            data['Close'].shift(1) <= data['SuperTrend'].shift(1))).astype(int)
-                data['Sell_Signal'] = ((data['Close'] < data['SuperTrend']) & (
-                            data['Close'].shift(1) >= data['SuperTrend'].shift(1))).astype(int)
-                if str(data['Buy_Signal'].iloc[-1]) == "1":
-                    alım_sinyali = "AL"
-                else:
-                    alım_sinyali = "ALMA"
-                if str(data['Sell_Signal'].iloc[-1])=="1":
-                    satım_sinyali = "SAT"
-                else:
-                    satım_sinyali = "SATMA"
-                # Alım ve satım sinyallerini yazdırın
-                print(Fore.BLUE + alım_sinyali + "----" + satım_sinyali + Style.RESET_ALL)
-
-                if last_j > 80 or last_k > 80 :
-                    print(Fore.RED + "KDJ: Aşırı Alımda, Düşecek " + symbol + "" + Style.RESET_ALL)
-                    sinyal1=0
-                elif last_k < 0 or last_j < 0 :
-                    print(Fore.GREEN + "KDJ: Aşırı satışta, Yükselecek " + symbol + "" + Style.RESET_ALL)
-                    sinyal1=1
-                else:
-                    print(Fore.YELLOW + "J: " + str(Decimal(last_j).quantize(Decimal('0.00000'))) + " " +"D : " + str(Decimal(last_d).quantize(Decimal('0.00000'))) + " " + "K : " + str(Decimal(last_k).quantize(Decimal('0.00000'))) + Style.RESET_ALL)
-                    sinyal1=0
-
-                macd = df['Close'].ewm(span=12, adjust=False).mean() - df['Close'].ewm(span=26, adjust=False).mean()
-                if macd.iloc[-1] > 0:
-                    print(Fore.GREEN + "MACD: yükseliş trendinde" + Style.RESET_ALL)
-                    sinyal2=1
-                else:
-                    print(Fore.RED + "MACD: " + str(Decimal(macd.iloc[-1]).quantize(Decimal('0.00000'))) + " " + Style.RESET_ALL)
-                    sinyal2=0
-
-
-                if float(rmse) < rms:
-
-                    print(Fore.YELLOW + "RMSE: " + str(Decimal(rmse).quantize(Decimal('0.00000'))) + " " + Style.RESET_ALL)
-                    dorecast = forecast[-1]
-                    if dorecast > df['Close'].iloc[-1]:
-                        difference = (dorecast - df['Close'].iloc[-1]) / df['Close'].iloc[-1] * 100
-                        print("fark:",difference)
-
-
-                        if int(difference) > dif:
-                            ema20 = df['Close'].ewm(span=20, adjust=False).mean()
-                            ema50 = df['Close'].ewm(span=50, adjust=False).mean()
-                            if ema20.iloc[-1] > ema50.iloc[-1] and ema20.iloc[-2] < ema50.iloc[-2]:
-                                print(Fore.GREEN + "EMA: Yükseliş yeni başladı" + Style.RESET_ALL)
-                                sinyal3=2
-                            elif ema20.iloc[-1] > ema50.iloc[-1] and ema20.iloc[-2] > ema50.iloc[-2] and ema20.iloc[-3] > ema50.iloc[-3]:
-                                print(Fore.LIGHTYELLOW_EX + "EMA: Devam eden Yükseliş" + Style.RESET_ALL)
-                                sinyal3=1
-                            elif ema20.iloc[-1] < ema50.iloc[-1]:
-                                print(Fore.RED + "EMA: Yükseliş yok" + Style.RESET_ALL)
-                                sinyal3=0
-                            else:
-                                print(Fore.RED + "EMA: Yükseliş yok" + Style.RESET_ALL)
-                                sinyal3=0
-
-
-
-
-                            message=(symbol + " " + str(aralık) + " gün sonraki tahmini fiyat: " +
-                                 str(Decimal(dorecast).quantize(Decimal('0.00000'))) + " " + " fark : " + str(Decimal(difference).quantize(Decimal('0.00000'))) +
-                                 " % " + "Son Kapanış Fiyatı : " + str(Decimal(df['Close'].iloc[-1]).quantize(Decimal('0.00000')))+" "+"sinyal gücü(0-4):"+str(int(sinyal1)+int(sinyal2)+int(sinyal3)))
-
-                            print("sinyal gücü(0-4):",int(sinyal1)+int(sinyal2)+int(sinyal3))
-                            if int(sinyal1)+int(sinyal2)+int(sinyal3) >= 2:
-                                send_telegram_message(message)
-                            else:
-                                print(Fore.RED + "sinyal yetersiz" + Style.RESET_ALL)
-
-
-                        else:
-                            print(Fore.RED + "yeterli yükseliş görülmedi" + Style.RESET_ALL)
-
-                    else:
-                        print(Fore.RED + "Yükseliş yok" + Style.RESET_ALL)
-
-                else:
-                    print(Fore.RED + "RMSE: " + str(Decimal(rmse).quantize(Decimal('0.00000'))) + " " + Style.RESET_ALL)
-
-            else:
-                print(Fore.RED + "veri hatalı" + Style.RESET_ALL)
-        except Exception as e:
-            print(e)
-
-    print(rmse_df)
 
 def indikator():
 
@@ -415,7 +158,7 @@ def indikator():
     c=pairs_list
     symbols = c
     random.shuffle(symbols)
-    aralık = 48
+    aralık = 24
     interval = "1h"
     if symbols==pairs_list:
         dif=70
@@ -450,13 +193,71 @@ def indikator():
             data = data.dropna()
             data = data[['Date', 'Close','Low','High']]
 
+
             df = data
+            print(df['Date'][-1].strftime('%Y-%m-%d'))
+            print(((datetime.now())).strftime('%Y-%m-%d'))
+            if df['Date'][-1].strftime('%Y-%m-%d') != ((datetime.now())).strftime('%Y-%m-%d'):
+                print(df['Date'][-1].strftime('%Y-%m-%d'))
+                print("veri eksik veya hatalı")
+                continue
+
 
             # Fiyat verilerini 10 gün kaydır
             df['target'] = df['Close'].shift(-aralık)
 
 
             if (df['Date'][-1]).strftime('%Y-%m-%d') == ((datetime.now())).strftime('%Y-%m-%d'):
+                def calculate_CCI(data, window):
+                    TP = (data['High'] + data['Low'] + data['Close']) / 3
+                    CCI = (TP - TP.rolling(window=window).mean()) / (0.015 * TP.rolling(window=window).std())
+                    return CCI
+
+                data['CCI'] = calculate_CCI(data, 20)
+
+                # Alım ve satım sinyalleri üretme
+                data['CCI-Signal'] = 0
+                buy_signal_threshold = -100  # Alım sinyali için eşik değeri
+                sell_signal_threshold = 100  # Satım sinyali için eşik değeri
+                data['CCI-Signal'][data['CCI'] < buy_signal_threshold] = 1  # Alım sinyali
+                data['CCI-Signal'][data['CCI'] > sell_signal_threshold] = -1  # Satım sinyali
+                if str(data['CCI-Signal'].iloc[-1]) == "1":
+
+
+                    messageccı=symbol+" CCI Alım sinyali "+interval+"'lik aralıkta" + " son kapanış fiyatı: "+str(data['Close'].iloc[-1])
+                    send_telegram_message(messageccı)
+                elif str(data['CCI-Signal'].iloc[-1]) == "-1":
+
+                    print(Fore.RED + "CCI Satım sinyali" + Style.RESET_ALL)
+                    continue
+
+                else:
+
+                    print(Fore.YELLOW + "CCI sinyali yok" + Style.RESET_ALL)
+                    continue
+
+
+
+                data['20 Day MA'] = data['Close'].rolling(window=20).mean()
+                data['Upper Band'] = data['20 Day MA'] + 2 * data['Close'].rolling(window=20).std()
+                data['Lower Band'] = data['20 Day MA'] - 2 * data['Close'].rolling(window=20).std()
+
+                # Alım ve satım sinyalleri üretin
+                data['Signal'] = 0
+                data['Signal'][data['Close'] < data['Lower Band']] = 1  # Alım sinyali
+                data['Signal'][data['Close'] > data['Upper Band']] = -1  # Satım sinyali
+                if str(data['Signal'].iloc[-1]) == "1":
+
+                    print(Fore.GREEN + "Bolinger Alım sinyali" + Style.RESET_ALL)
+                elif str(data['Signal'].iloc[-1]) == "-1":
+
+                    print(Fore.RED + "Bolinger Satım sinyali" + Style.RESET_ALL)
+                    continue
+                else:
+
+                    print(Fore.YELLOW + "Bolinger sinyali yok" + Style.RESET_ALL)
+
+
                 # Giriş verilerini ve hedef değişkeni ayarlayın
                 X = df.iloc[:-aralık][['Close']].values
                 y = df['target'].dropna().values
@@ -540,25 +341,7 @@ def indikator():
                     message5=''
 
 
-                window = 20
-                num_std_dev = 2
-                # Hareketli ortalama hesapla
-                data['Rolling Mean'] = data['Close'].rolling(window=window).mean()
 
-                # Hareketli ortalama etrafındaki standart sapma hesapla
-                data['Upper Band'] = data['Rolling Mean'] + (data['Close'].rolling(window=window).std() * num_std_dev)
-                data['Lower Band'] = data['Rolling Mean'] - (data['Close'].rolling(window=window).std() * num_std_dev)
-
-                # Alım-Satım sinyallerini belirle
-                data['Signal'] = 0  # 0: Hiçbir işlem yok, 1: Alım, -1: Satım
-
-                # Alım sinyali
-                data.loc[data['Close'] < data['Lower Band'], 'Signal'] = 1
-
-                # Satım sinyali
-                data.loc[data['Close'] > data['Upper Band'], 'Signal'] = -1
-                signal=data['Signal'].iloc[-1]
-                print(Fore.GREEN + "Bolinger Sinyal: " + str(signal) + Style.RESET_ALL)
 
                 n=9
                 m1 = 3
@@ -600,6 +383,8 @@ def indikator():
                 if signals[-1]=='AL':
                     messagestokastik=symbol+" STOKASTİK AL SİNYALİ"+"fiyat:"+forecast
                     send_telegram_message(messagestokastik)
+                    allgoingmessage= symbol + " tüm indikatörler OK"+" aralık:"+interval
+                    send_telegram_message(allgoingmessage)
                 period = 10
                 multiplier = 3
 
@@ -717,6 +502,7 @@ def indikator():
         except Exception as e:
             print(e)
 
-
-
-indikator()
+while True:
+    if __name__ == '__main__':
+        indikator()
+    time.sleep(14400)
