@@ -10,30 +10,10 @@ import pandas as pd
 import random
 import re
 import numpy as np
-from decimal import Decimal
-from pmdarima import auto_arima as arm
 from tabulate import tabulate
-from sklearn.neural_network import MLPRegressor
-from sklearn.metrics import mean_squared_error
-import tkinter as tk
-from tkinter import ttk as ttk
-import sys
-from tkinter import scrolledtext
-import threading
-from scipy.stats import randint, uniform
-from sklearn.model_selection import RandomizedSearchCV
-from sklearn.neural_network import MLPRegressor
-from tqdm import tqdm
-import pandas_ta as ta
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error
-import numpy as np
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split
 from binance.client import Client
+from pmdarima import auto_arima
 
-warnings.filterwarnings("ignore")
 
 
 api_key = 'RjCgL26lL8GoDagHA4Pb2wFC9414Oenhp5oGOfQMJrCJbWpU9yBtMPofuNAm3cXL'
@@ -109,7 +89,7 @@ end = datetime.now() + timedelta(days=1)
 end = end.strftime("%Y-%m-%d")
 endcontrol = (datetime.now()).strftime("%Y-%m-%d")
 enddate = str(endcontrol)+" 00:00:00"
-startdate = datetime.now() - timedelta(days=1000)
+startdate = datetime.now() - timedelta(days=3)
 startdate = startdate.strftime("%Y-%m-%d")
 
 def send_telegram_message(message):
@@ -133,14 +113,71 @@ def take_data():
 all_tickers = yf.Tickers("IS")
 b = [ticker for ticker in all_tickers.tickers if ticker.endswith('.IS')]
 
-
+cr_list = ['BTC-USD', 'ETH-USD', 'BNB-USD', 'BCC-USD', 'NEO-USD', 'LTC-USD', 'QTUM-USD', 'ADA-USD', 'XRP-USD',
+               'EOS-USD', 'TUSD-USD', 'IOTA-USD', 'XLM-USD', 'ONT-USD', 'TRX-USD', 'ETC-USD', 'ICX-USD', 'VEN-USD',
+               'NULS-USD', 'VET-USD', 'PAX-USD', 'BCHABC-USD', 'BCHSV-USD', 'USDC-USD', 'LINK-USD', 'WAVES-USD',
+               'BTT-USD', 'USDS-USD', 'ONG-USD', 'HOT-USD', 'ZIL-USD', 'ZRX-USD', 'FET-USD', 'BAT-USD', 'XMR-USD',
+               'ZEC-USD', 'IOST-USD', 'CELR-USD', 'DASH-USD', 'NANO-USD', 'OMG-USD', 'THETA-USD', 'ENJ-USD', 'MITH-USD',
+               'MATIC-USD', 'ATOM-USD', 'TFUEL-USD', 'ONE-USD', 'FTM-USD', 'ALGO-USD', 'USDSB-USD', 'GTO-USD',
+               'ERD-USD', 'DOGE-USD', 'DUSK-USD', 'ANKR-USD', 'WIN-USD', 'COS-USD', 'NPXS-USD', 'COCOS-USD', 'MTL-USD',
+               'TOMO-USD', 'PERL-USD', 'DENT-USD', 'MFT-USD', 'KEY-USD', 'STORM-USD', 'DOCK-USD', 'WAN-USD', 'FUN-USD',
+               'CVC-USD', 'CHZ-USD', 'BAND-USD', 'BUSD-USD', 'BEAM-USD', 'XTZ-USD', 'REN-USD', 'RVN-USD', 'HC-USD',
+               'HBAR-USD', 'NKN-USD', 'STX-USD', 'KAVA-USD', 'ARPA-USD', 'IOTX-USD', 'RLC-USD', 'MCO-USD', 'CTXC-USD',
+               'BCH-USD', 'TROY-USD', 'VITE-USD', 'FTT-USD', 'EUR-USD', 'OGN-USD', 'DREP-USD', 'BULL-USD', 'BEAR-USD',
+               'ETHBULL-USD', 'ETHBEAR-USD', 'TCT-USD', 'WRX-USD', 'BTS-USD', 'LSK-USD', 'BNT-USD', 'LTO-USD',
+               'EOSBULL-USD', 'EOSBEAR-USD', 'XRPBULL-USD', 'XRPBEAR-USD', 'STRAT-USD', 'AION-USD', 'MBL-USD',
+               'COTI-USD', 'BNBBULL-USD', 'BNBBEAR-USD', 'STPT-USD', 'WTC-USD', 'DATA-USD', 'XZC-USD', 'SOL-USD',
+               'CTSI-USD', 'HIVE-USD', 'CHR-USD', 'BTCUP-USD', 'BTCDOWN-USD', 'GXS-USD', 'ARDR-USD', 'LEND-USD',
+               'MDT-USD', 'STMX-USD', 'KNC-USD', 'REP-USD', 'LRC-USD', 'PNT-USD', 'COMP-USD', 'BKRW-USD', 'SC-USD',
+               'ZEN-USD', 'SNX-USD', 'ETHUP-USD', 'ETHDOWN-USD', 'ADAUP-USD', 'ADADOWN-USD', 'LINKUP-USD',
+               'LINKDOWN-USD', 'VTHO-USD', 'DGB-USD', 'GBP-USD', 'SXP-USD', 'MKR-USD', 'DAI-USD', 'DCR-USD',
+               'STORJ-USD', 'BNBUP-USD', 'BNBDOWN-USD', 'XTZUP-USD', 'XTZDOWN-USD', 'MANA-USD', 'AUD-USD', 'YFI-USD',
+               'BAL-USD', 'BLZ-USD', 'IRIS-USD', 'KMD-USD', 'JST-USD', 'SRM-USD', 'ANT-USD', 'CRV-USD', 'SAND-USD',
+               'OCEAN-USD', 'NMR-USD', 'DOT-USD', 'LUNA-USD', 'RSR-USD', 'PAXG-USD', 'WNXM-USD', 'TRB-USD', 'BZRX-USD',
+               'SUSHI-USD', 'YFII-USD', 'KSM-USD', 'EGLD-USD', 'DIA-USD', 'RUNE-USD', 'FIO-USD', 'UMA-USD', 'EOSUP-USD',
+               'EOSDOWN-USD', 'TRXUP-USD', 'TRXDOWN-USD', 'XRPUP-USD', 'XRPDOWN-USD', 'DOTUP-USD', 'DOTDOWN-USD',
+               'BEL-USD', 'WING-USD', 'LTCUP-USD', 'LTCDOWN-USD', 'UNI-USD', 'NBS-USD', 'OXT-USD', 'SUN-USD',
+               'AVAX-USD', 'HNT-USD', 'FLM-USD', 'UNIUP-USD', 'UNIDOWN-USD', 'ORN-USD', 'UTK-USD', 'XVS-USD',
+               'ALPHA-USD', 'AAVE-USD', 'NEAR-USD', 'SXPUP-USD', 'SXPDOWN-USD', 'FIL-USD', 'FILUP-USD', 'FILDOWN-USD',
+               'YFIUP-USD', 'YFIDOWN-USD', 'INJ-USD', 'AUDIO-USD', 'CTK-USD', 'BCHUP-USD', 'BCHDOWN-USD', 'AKRO-USD',
+               'AXS-USD', 'HARD-USD', 'DNT-USD', 'STRAX-USD', 'UNFI-USD', 'ROSE-USD', 'AVA-USD', 'XEM-USD',
+               'AAVEUP-USD', 'AAVEDOWN-USD', 'SKL-USD', 'SUSD-USD', 'SUSHIUP-USD', 'SUSHIDOWN-USD', 'XLMUP-USD',
+               'XLMDOWN-USD', 'GRT-USD', 'JUV-USD', 'PSG-USD', '1INCH-USD', 'REEF-USD', 'OG-USD', 'ATM-USD', 'ASR-USD',
+               'CELO-USD', 'RIF-USD', 'BTCST-USD', 'TRU-USD', 'CKB-USD', 'TWT-USD', 'FIRO-USD', 'LIT-USD', 'SFP-USD',
+               'DODO-USD', 'CAKE-USD', 'ACM-USD', 'BADGER-USD', 'FIS-USD', 'OM-USD', 'POND-USD', 'DEGO-USD',
+               'ALICE-USD', 'LINA-USD', 'PERP-USD', 'RAMP-USD', 'SUPER-USD', 'CFX-USD', 'EPS-USD', 'AUTO-USD',
+               'TKO-USD', 'PUNDIX-USD', 'TLM-USD', '1INCHUP-USD', '1INCHDOWN-USD', 'BTG-USD', 'MIR-USD', 'BAR-USD',
+               'FORTH-USD', 'BAKE-USD', 'BURGER-USD', 'SLP-USD', 'SHIB-USD', 'ICP-USD', 'AR-USD', 'POLS-USD', 'MDX-USD',
+               'MASK-USD', 'LPT-USD', 'NU-USD', 'XVG-USD', 'ATA-USD', 'GTC-USD', 'TORN-USD', 'KEEP-USD', 'ERN-USD',
+               'KLAY-USD', 'PHA-USD', 'BOND-USD', 'MLN-USD', 'DEXE-USD', 'C98-USD', 'CLV-USD', 'QNT-USD', 'FLOW-USD',
+               'TVK-USD', 'MINA-USD', 'RAY-USD', 'FARM-USD', 'ALPACA-USD', 'QUICK-USD', 'MBOX-USD', 'FOR-USD',
+               'REQ-USD', 'GHST-USD', 'WAXP-USD', 'TRIBE-USD', 'GNO-USD', 'XEC-USD', 'ELF-USD', 'DYDX-USD', 'POLY-USD',
+               'IDEX-USD', 'VIDT-USD', 'USDP-USD', 'GALA-USD', 'ILV-USD', 'YGG-USD', 'SYS-USD', 'DF-USD', 'FIDA-USD',
+               'FRONT-USD', 'CVP-USD', 'AGLD-USD', 'RAD-USD', 'BETA-USD', 'RARE-USD', 'LAZIO-USD', 'CHESS-USD',
+               'ADX-USD', 'AUCTION-USD', 'DAR-USD', 'BNX-USD', 'RGT-USD', 'MOVR-USD', 'CITY-USD', 'ENS-USD', 'KP3R-USD',
+               'QI-USD', 'PORTO-USD', 'POWR-USD', 'VGX-USD', 'JASMY-USD', 'AMP-USD', 'PLA-USD', 'PYR-USD', 'RNDR-USD',
+               'ALCX-USD', 'SANTOS-USD', 'MC-USD', 'ANY-USD', 'BICO-USD', 'FLUX-USD', 'FXS-USD', 'VOXEL-USD',
+               'HIGH-USD', 'CVX-USD', 'PEOPLE-USD', 'OOKI-USD', 'SPELL-USD', 'UST-USD', 'JOE-USD', 'ACH-USD', 'IMX-USD',
+               'GLMR-USD', 'LOKA-USD', 'SCRT-USD', 'API3-USD', 'BTTC-USD', 'ACA-USD', 'ANC-USD', 'XNO-USD', 'WOO-USD',
+               'ALPINE-USD', 'T-USD', 'ASTR-USD', 'GMT-USD', 'KDA-USD', 'APE-USD', 'BSW-USD', 'BIFI-USD', 'MULTI-USD',
+               'STEEM-USD', 'MOB-USD', 'NEXO-USD', 'REI-USD', 'GAL-USD', 'LDO-USD', 'EPX-USD', 'OP-USD', 'LEVER-USD',
+               'STG-USD', 'LUNC-USD', 'GMX-USD', 'NEBL-USD', 'POLYX-USD', 'APT-USD', 'OSMO-USD', 'HFT-USD', 'PHB-USD',
+               'HOOK-USD', 'MAGIC-USD', 'HIFI-USD', 'RPL-USD', 'PROS-USD', 'AGIX-USD', 'GNS-USD', 'SYN-USD', 'VIB-USD',
+               'SSV-USD', 'LQTY-USD', 'AMB-USD', 'BETH-USD', 'USTC-USD', 'GAS-USD', 'GLM-USD', 'PROM-USD', 'QKC-USD',
+               'UFT-USD', 'ID-USD', 'ARB-USD', 'LOOM-USD', 'OAX-USD', 'RDNT-USD', 'WBTC-USD', 'EDU-USD', 'SUI-USD',
+               'AERGO-USD', 'PEPE-USD', 'FLOKI-USD', 'AST-USD', 'SNT-USD', 'COMBO-USD', 'MAV-USD', 'PENDLE-USD',
+               'ARKM-USD', 'WBETH-USD', 'WLD-USD', 'FDUSD-USD', 'SEI-USD', 'CYBER-USD', 'ARK-USD', 'CREAM-USD',
+               'GFT-USD', 'IQ-USD', 'NTRN-USD', 'TIA-USD', 'MEME-USD', 'ORDI-USD', 'BEAMX-USD', 'PIVX-USD', 'VIC-USD',
+               'BLUR-USD', 'VANRY-USD', 'AEUR-USD', 'JTO-USD', '1000SATS-USD', 'BONK-USD', 'ACE-USD', 'NFP-USD',
+               'AI-USD', 'XAI-USD', 'MANTA-USD', 'ALT-USD', 'JUP-USD', 'PYTH-USD', 'RONIN-USD', 'DYM-USD', 'PIXEL-USD',
+               'STRK-USD', 'PORTAL-USD', 'PDA-USD', 'AXL-USD', 'WIF-USD', 'METIS-USD', 'AEVO-USD', 'BOME-USD',
+               'ETHFI-USD', 'ENA-USD', 'W-USD', 'TNSR-USD', 'SAGA-USD', 'TAO-USD', 'OMNI-USD', 'REZ-USD', 'BB-USD',
+               'NOT-USD']
+c=cr_list
 
 def newone():
-
-
     api_key = 'RjCgL26lL8GoDagHA4Pb2wFC9414Oenhp5oGOfQMJrCJbWpU9yBtMPofuNAm3cXL'
     api_secret = 'SGNelarbzwvaFVRpQXhfeX9EPbLFRYIIKi8B2PloNTepvT6Q12LIYsCXbgkn8DGF'
-
     endpoint = 'https://api.binance.com/api/v3/exchangeInfo'
 
     def get_usdt_pairs():
@@ -157,94 +194,122 @@ def newone():
         spot_symbols = [symbol['symbol'] for symbol in symbols if
                         symbol['quoteAsset'] == 'USDT']  # USDT bazlı spot semboller
         usdt_pairs=spot_symbols
-        return usdt_pairs
 
+        cr_list=['BTC-USD', 'ETH-USD', 'BNB-USD', 'BCC-USD', 'NEO-USD', 'LTC-USD', 'QTUM-USD', 'ADA-USD', 'XRP-USD', 'EOS-USD', 'TUSD-USD', 'IOTA-USD', 'XLM-USD', 'ONT-USD', 'TRX-USD', 'ETC-USD', 'ICX-USD', 'VEN-USD', 'NULS-USD', 'VET-USD', 'PAX-USD', 'BCHABC-USD', 'BCHSV-USD', 'USDC-USD', 'LINK-USD', 'WAVES-USD', 'BTT-USD', 'USDS-USD', 'ONG-USD', 'HOT-USD', 'ZIL-USD', 'ZRX-USD', 'FET-USD', 'BAT-USD', 'XMR-USD', 'ZEC-USD', 'IOST-USD', 'CELR-USD', 'DASH-USD', 'NANO-USD', 'OMG-USD', 'THETA-USD', 'ENJ-USD', 'MITH-USD', 'MATIC-USD', 'ATOM-USD', 'TFUEL-USD', 'ONE-USD', 'FTM-USD', 'ALGO-USD', 'USDSB-USD', 'GTO-USD', 'ERD-USD', 'DOGE-USD', 'DUSK-USD', 'ANKR-USD', 'WIN-USD', 'COS-USD', 'NPXS-USD', 'COCOS-USD', 'MTL-USD', 'TOMO-USD', 'PERL-USD', 'DENT-USD', 'MFT-USD', 'KEY-USD', 'STORM-USD', 'DOCK-USD', 'WAN-USD', 'FUN-USD', 'CVC-USD', 'CHZ-USD', 'BAND-USD', 'BUSD-USD', 'BEAM-USD', 'XTZ-USD', 'REN-USD', 'RVN-USD', 'HC-USD', 'HBAR-USD', 'NKN-USD', 'STX-USD', 'KAVA-USD', 'ARPA-USD', 'IOTX-USD', 'RLC-USD', 'MCO-USD', 'CTXC-USD', 'BCH-USD', 'TROY-USD', 'VITE-USD', 'FTT-USD', 'EUR-USD', 'OGN-USD', 'DREP-USD', 'BULL-USD', 'BEAR-USD', 'ETHBULL-USD', 'ETHBEAR-USD', 'TCT-USD', 'WRX-USD', 'BTS-USD', 'LSK-USD', 'BNT-USD', 'LTO-USD', 'EOSBULL-USD', 'EOSBEAR-USD', 'XRPBULL-USD', 'XRPBEAR-USD', 'STRAT-USD', 'AION-USD', 'MBL-USD', 'COTI-USD', 'BNBBULL-USD', 'BNBBEAR-USD', 'STPT-USD', 'WTC-USD', 'DATA-USD', 'XZC-USD', 'SOL-USD', 'CTSI-USD', 'HIVE-USD', 'CHR-USD', 'BTCUP-USD', 'BTCDOWN-USD', 'GXS-USD', 'ARDR-USD', 'LEND-USD', 'MDT-USD', 'STMX-USD', 'KNC-USD', 'REP-USD', 'LRC-USD', 'PNT-USD', 'COMP-USD', 'BKRW-USD', 'SC-USD', 'ZEN-USD', 'SNX-USD', 'ETHUP-USD', 'ETHDOWN-USD', 'ADAUP-USD', 'ADADOWN-USD', 'LINKUP-USD', 'LINKDOWN-USD', 'VTHO-USD', 'DGB-USD', 'GBP-USD', 'SXP-USD', 'MKR-USD', 'DAI-USD', 'DCR-USD', 'STORJ-USD', 'BNBUP-USD', 'BNBDOWN-USD', 'XTZUP-USD', 'XTZDOWN-USD', 'MANA-USD', 'AUD-USD', 'YFI-USD', 'BAL-USD', 'BLZ-USD', 'IRIS-USD', 'KMD-USD', 'JST-USD', 'SRM-USD', 'ANT-USD', 'CRV-USD', 'SAND-USD', 'OCEAN-USD', 'NMR-USD', 'DOT-USD', 'LUNA-USD', 'RSR-USD', 'PAXG-USD', 'WNXM-USD', 'TRB-USD', 'BZRX-USD', 'SUSHI-USD', 'YFII-USD', 'KSM-USD', 'EGLD-USD', 'DIA-USD', 'RUNE-USD', 'FIO-USD', 'UMA-USD', 'EOSUP-USD', 'EOSDOWN-USD', 'TRXUP-USD', 'TRXDOWN-USD', 'XRPUP-USD', 'XRPDOWN-USD', 'DOTUP-USD', 'DOTDOWN-USD', 'BEL-USD', 'WING-USD', 'LTCUP-USD', 'LTCDOWN-USD', 'UNI-USD', 'NBS-USD', 'OXT-USD', 'SUN-USD', 'AVAX-USD', 'HNT-USD', 'FLM-USD', 'UNIUP-USD', 'UNIDOWN-USD', 'ORN-USD', 'UTK-USD', 'XVS-USD', 'ALPHA-USD', 'AAVE-USD', 'NEAR-USD', 'SXPUP-USD', 'SXPDOWN-USD', 'FIL-USD', 'FILUP-USD', 'FILDOWN-USD', 'YFIUP-USD', 'YFIDOWN-USD', 'INJ-USD', 'AUDIO-USD', 'CTK-USD', 'BCHUP-USD', 'BCHDOWN-USD', 'AKRO-USD', 'AXS-USD', 'HARD-USD', 'DNT-USD', 'STRAX-USD', 'UNFI-USD', 'ROSE-USD', 'AVA-USD', 'XEM-USD', 'AAVEUP-USD', 'AAVEDOWN-USD', 'SKL-USD', 'SUSD-USD', 'SUSHIUP-USD', 'SUSHIDOWN-USD', 'XLMUP-USD', 'XLMDOWN-USD', 'GRT-USD', 'JUV-USD', 'PSG-USD', '1INCH-USD', 'REEF-USD', 'OG-USD', 'ATM-USD', 'ASR-USD', 'CELO-USD', 'RIF-USD', 'BTCST-USD', 'TRU-USD', 'CKB-USD', 'TWT-USD', 'FIRO-USD', 'LIT-USD', 'SFP-USD', 'DODO-USD', 'CAKE-USD', 'ACM-USD', 'BADGER-USD', 'FIS-USD', 'OM-USD', 'POND-USD', 'DEGO-USD', 'ALICE-USD', 'LINA-USD', 'PERP-USD', 'RAMP-USD', 'SUPER-USD', 'CFX-USD', 'EPS-USD', 'AUTO-USD', 'TKO-USD', 'PUNDIX-USD', 'TLM-USD', '1INCHUP-USD', '1INCHDOWN-USD', 'BTG-USD', 'MIR-USD', 'BAR-USD', 'FORTH-USD', 'BAKE-USD', 'BURGER-USD', 'SLP-USD', 'SHIB-USD', 'ICP-USD', 'AR-USD', 'POLS-USD', 'MDX-USD', 'MASK-USD', 'LPT-USD', 'NU-USD', 'XVG-USD', 'ATA-USD', 'GTC-USD', 'TORN-USD', 'KEEP-USD', 'ERN-USD', 'KLAY-USD', 'PHA-USD', 'BOND-USD', 'MLN-USD', 'DEXE-USD', 'C98-USD', 'CLV-USD', 'QNT-USD', 'FLOW-USD', 'TVK-USD', 'MINA-USD', 'RAY-USD', 'FARM-USD', 'ALPACA-USD', 'QUICK-USD', 'MBOX-USD', 'FOR-USD', 'REQ-USD', 'GHST-USD', 'WAXP-USD', 'TRIBE-USD', 'GNO-USD', 'XEC-USD', 'ELF-USD', 'DYDX-USD', 'POLY-USD', 'IDEX-USD', 'VIDT-USD', 'USDP-USD', 'GALA-USD', 'ILV-USD', 'YGG-USD', 'SYS-USD', 'DF-USD', 'FIDA-USD', 'FRONT-USD', 'CVP-USD', 'AGLD-USD', 'RAD-USD', 'BETA-USD', 'RARE-USD', 'LAZIO-USD', 'CHESS-USD', 'ADX-USD', 'AUCTION-USD', 'DAR-USD', 'BNX-USD', 'RGT-USD', 'MOVR-USD', 'CITY-USD', 'ENS-USD', 'KP3R-USD', 'QI-USD', 'PORTO-USD', 'POWR-USD', 'VGX-USD', 'JASMY-USD', 'AMP-USD', 'PLA-USD', 'PYR-USD', 'RNDR-USD', 'ALCX-USD', 'SANTOS-USD', 'MC-USD', 'ANY-USD', 'BICO-USD', 'FLUX-USD', 'FXS-USD', 'VOXEL-USD', 'HIGH-USD', 'CVX-USD', 'PEOPLE-USD', 'OOKI-USD', 'SPELL-USD', 'UST-USD', 'JOE-USD', 'ACH-USD', 'IMX-USD', 'GLMR-USD', 'LOKA-USD', 'SCRT-USD', 'API3-USD', 'BTTC-USD', 'ACA-USD', 'ANC-USD', 'XNO-USD', 'WOO-USD', 'ALPINE-USD', 'T-USD', 'ASTR-USD', 'GMT-USD', 'KDA-USD', 'APE-USD', 'BSW-USD', 'BIFI-USD', 'MULTI-USD', 'STEEM-USD', 'MOB-USD', 'NEXO-USD', 'REI-USD', 'GAL-USD', 'LDO-USD', 'EPX-USD', 'OP-USD', 'LEVER-USD', 'STG-USD', 'LUNC-USD', 'GMX-USD', 'NEBL-USD', 'POLYX-USD', 'APT-USD', 'OSMO-USD', 'HFT-USD', 'PHB-USD', 'HOOK-USD', 'MAGIC-USD', 'HIFI-USD', 'RPL-USD', 'PROS-USD', 'AGIX-USD', 'GNS-USD', 'SYN-USD', 'VIB-USD', 'SSV-USD', 'LQTY-USD', 'AMB-USD', 'BETH-USD', 'USTC-USD', 'GAS-USD', 'GLM-USD', 'PROM-USD', 'QKC-USD', 'UFT-USD', 'ID-USD', 'ARB-USD', 'LOOM-USD', 'OAX-USD', 'RDNT-USD', 'WBTC-USD', 'EDU-USD', 'SUI-USD', 'AERGO-USD', 'PEPE-USD', 'FLOKI-USD', 'AST-USD', 'SNT-USD', 'COMBO-USD', 'MAV-USD', 'PENDLE-USD', 'ARKM-USD', 'WBETH-USD', 'WLD-USD', 'FDUSD-USD', 'SEI-USD', 'CYBER-USD', 'ARK-USD', 'CREAM-USD', 'GFT-USD', 'IQ-USD', 'NTRN-USD', 'TIA-USD', 'MEME-USD', 'ORDI-USD', 'BEAMX-USD', 'PIVX-USD', 'VIC-USD', 'BLUR-USD', 'VANRY-USD', 'AEUR-USD', 'JTO-USD', '1000SATS-USD', 'BONK-USD', 'ACE-USD', 'NFP-USD', 'AI-USD', 'XAI-USD', 'MANTA-USD', 'ALT-USD', 'JUP-USD', 'PYTH-USD', 'RONIN-USD', 'DYM-USD', 'PIXEL-USD', 'STRK-USD', 'PORTAL-USD', 'PDA-USD', 'AXL-USD', 'WIF-USD', 'METIS-USD', 'AEVO-USD', 'BOME-USD', 'ETHFI-USD', 'ENA-USD', 'W-USD', 'TNSR-USD', 'SAGA-USD', 'TAO-USD', 'OMNI-USD', 'REZ-USD', 'BB-USD', 'NOT-USD']
+
+        for i in usdt_pairs:
+            i = i.replace("USDT", "-USD")
+
+            cr_list.append(i)
+        print(cr_list)
+
+        return usdt_pairs
     def binance_api(endpoint, params=None):
         headers = {'X-MBX-APIKEY': api_key}
         response = requests.get(endpoint, headers=headers, params=params)
         return json.loads(response.text)
-
-    usdt_pairs = get_usdt_pairs()
-    #pairs_list = []
-
-    #for pair in usdt_pairs:
-    #    modified_pair = pair
-    #    pairs_list.append(modified_pair)
-    #pairs_list = [eleman.replace("USDT", "-USD") for eleman in pairs_list]
+    usdt_pairs = cr_list
     b=bist
     c = usdt_pairs
-
     symbols = c
     random.shuffle(symbols)
-    aralık = 14
-    interval = "1d"
-
+    aralık = 4*4
+    interval = "15m"
     say = 0
     say2 = str(len(symbols))
 
     for symbol in symbols:
         try:
-            say = say + 1
-            ilerleme = str(say) + "/" + say2
-
+            say += 1
+            ilerleme = f"{say}/{say2}"
             print(Fore.MAGENTA + symbol + "-" + Fore.LIGHTBLUE_EX + ilerleme + Style.RESET_ALL)
 
-            if symbols == c:
+            # Download data from Yahoo Finance
+            data = yf.download(symbol, start=startdate, progress=False, interval=interval, end=end)
 
-                client = Client(api_key, api_secret)
-                klines = client.get_historical_klines(symbol, Client.KLINE_INTERVAL_1DAY, startdate, end)
+            # Calculate KDJ indicators
+            data['K'] = data['Close'].shift(1)
+            data['D'] = data['K'].rolling(3).mean()
+            data['J'] = (3 * data['K'] + 2 * data['D'] + data['Close']) / 6
 
-                # Veriyi DataFrame'e dönüştürün
-                data = pd.DataFrame(klines, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time',
-                                                     'quote_asset_volume', 'number_of_trades',
-                                                     'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume',
-                                                     'ignore'])
+            # Convert to float and drop NaN values
+            data = data.astype(float).dropna()
 
-                # Unix zaman damgasını normal zamana dönüştürün
-                data['ts']=data['timestamp']
-                data['timestamp'] = pd.to_datetime(data['timestamp'], unit='ms')
-                data = data[['ts','timestamp','close', 'low', 'high']]
-                data['Date'] = data['timestamp'].dt.date
-                data['Close'] = data['close'].astype(float)
-                data['Low'] = data['low'].astype(float)
-                data['High'] = data['high'].astype(float)
-            elif symbols == b:
-                data = yf.download(symbol, start=startdate, progress=False, interval=interval, end=end)
-            # Gereksiz sütunları düşürün
+            # Determine initial KDJ score
+            if data['J'].iloc[0] > 80:
+                puan1 = -1
+            elif data['J'].iloc[0] > 20 and data['J'].iloc[0] < 80:
+                puan1 = 0
+            elif data['J'].iloc[0] < 20:
+                puan1 = 1
             else:
-                data = yf.download(symbol, start=startdate, progress=False, interval=interval, end=end)
+                print("KDJ not satisfied.")
+                puan1 = 0
 
-            # Tarih sütununu indeks olarak ayarlayın
-            data.set_index('Date', inplace=True)
-            data['Date'] = data.index
-
-            data = data[['ts','Date', 'Close', 'Low', 'High']]
-
-            from pmdarima import auto_arima
-            from statsmodels.tsa.arima.model import ARIMA
-
-
-            model = auto_arima(data['Close'], start_p=1, start_q=1, max_p=3, max_q=3, m=aralık, start_P=0, seasonal=True,
-                               D=1, trace=False, error_action='ignore', suppress_warnings=True, stepwise=True)
-
-            model.fit(data['Close'])
-
-            # Tahmin
-            tahmin = model.predict(n_periods=1)
-            tahmin = tahmin[0]
-            tahmin = round(tahmin, 2)
-            değişim = ((tahmin - data['Close'][-1])/data['Close'][-1])*100
-            if değişim > 50:
-
-                send_telegram_message(symbol + " - forecast: " + str(tahmin)+" - son fiyat: "+str(data['Close'][-1])+" - değişim%: "+str(değişim))
+            # Check if J > D and J > K
+            if data['J'].iloc[0] > data['D'].iloc[0] and data['J'].iloc[0] > data['K'].iloc[0]:
+                puan2= 1
             else:
-                print(symbol+" - forecast: " + str(tahmin) + "son fiyat: "+str(data['Close'][-1])+" - değişim%: "+str(değişim))
+                puan2 = 0
+
+            # Calculate EMAs and assign score based on their relationship
+            data['EMA20'] = data['Close'].ewm(span=20, adjust=False).mean()
+            data['EMA50'] = data['Close'].ewm(span=50, adjust=False).mean()
+            data['EMA120'] = data['Close'].ewm(span=120, adjust=False).mean()
+            data.dropna(inplace=True)
+
+            if (data['EMA20'].iloc[0] > data['EMA50'].iloc[0] > data['EMA120'].iloc[0]
+                    and data['EMA20'].iloc[1] < data['EMA50'].iloc[1]):
+                puan3 = 1
+            elif (data['EMA20'].iloc[0] < data['EMA50'].iloc[0] < data['EMA120'].iloc[0]
+                    and data['EMA20'].iloc[1] > data['EMA50'].iloc[1]):
+                puan3=-1
+            else:
+                puan3= 0
+            # Calculate MACD and adjust score
+            data['EMA12'] = data['Close'].ewm(span=12, adjust=False).mean()
+            data['EMA26'] = data['Close'].ewm(span=26, adjust=False).mean()
+            data['MACD'] = data['EMA12'] - data['EMA26']
+
+            if data['MACD'].iloc[0] > 0:
+                puan4 = 1
+            else:
+                puan4 = 0
+
+
+            puan = puan1 + puan2 + puan3 + puan4
+
+            if puan >= 2:
+
+                print(Fore.GREEN + f"{symbol} {puan}" + Style.RESET_ALL)
+                model=auto_arima(data['Close'],
+                                 start_p=1, start_q=1, max_p=3, max_q=3, m=aralık, start_P=0,
+                                 seasonal=True, d=1, D=1, trace=False, error_action='ignore',
+                                 suppress_warnings=True, stepwise=True)
+                model.fit(data['Close'])
+                future_forecast = model.predict(n_periods=aralık)
+                sonfiyat=data['Close'].iloc[-1]
+                forecastsonfiyat=future_forecast.iloc[-1]
+
+                if forecastsonfiyat > sonfiyat:
+                    difference_percent = ((forecastsonfiyat - sonfiyat) / sonfiyat) * 100
+
+                    if difference_percent > 20:
+                        send_telegram_message(f"BUY {symbol} puan:{puan} forecast: {future_forecast.iloc[-1]} son fiyat: {data['Close'].iloc[-1]}")
+                        print(Fore.GREEN + f"{symbol} {puan}" + Style.RESET_ALL)
+                    else:
+
+                        print("yeterli yükseliş görülmedi")
+                else:
+                    print("yükseliş yok")
+            else:
+                print(Fore.RED + f"{symbol} {puan}" + Style.RESET_ALL)
 
         except Exception as e:
             print(e)
 
-while True:
-    if __name__ == '__main__':
+
+
+if __name__ == "__main__":
+    while True:
         newone()
-        send_telegram_message("Bugünlük bu kadar")
-        time.sleep(14400)
