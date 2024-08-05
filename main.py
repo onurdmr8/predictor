@@ -9,6 +9,7 @@ import pandas as pd
 import random
 import re
 import numpy as np
+from sklearn.neighbors import KNeighborsRegressor
 from tabulate import tabulate
 from binance.client import Client
 from pmdarima import auto_arima
@@ -22,6 +23,11 @@ import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
 from xgboost import XGBRegressor
 from lightgbm import LGBMRegressor
+from catboost import CatBoostRegressor
+from sklearn.svm import SVR
+from sklearn.linear_model import ElasticNet
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.model_selection import GridSearchCV
 
 api_key = 'RjCgL26lL8GoDagHA4Pb2wFC9414Oenhp5oGOfQMJrCJbWpU9yBtMPofuNAm3cXL'
 api_secret = 'SGNelarbzwvaFVRpQXhfeX9EPbLFRYIIKi8B2PloNTepvT6Q12LIYsCXbgkn8DGF'
@@ -127,10 +133,9 @@ def newthe(liste):
     sepet = pd.DataFrame(columns=["symbol","close","difference",
                                   "forecast","date",
                                   "hedef_tarih","rmse"])
-    estimators=50
+    estimators=150
     süre=7
-    beklenen_rmse=0.1
-    beklenen_degisim=20
+
     beklenen_sinyal=3
     randomstate=42
     sell=pd.DataFrame(columns=["symbol","close","date"])
@@ -138,11 +143,17 @@ def newthe(liste):
 
     for symbol in liste:
         say1 += 1
+
+        if symbol.endswith(".IS"):
+            beklenen_degisim = 15
+        else:
+            beklenen_degisim = 20
         print(Fore.CYAN + str(say1)+"/"+str(len(liste))+" "+symbol+" "+ Style.RESET_ALL)
         try:
 
             data = yf.download(symbol, start=startdate, progress=False, interval='1d', end=end)
             data['close'] = data['Close']
+            ortalama = data['close'].mean()
 
             son_tarih=datetime.now()-timedelta(days=6)
 
@@ -206,25 +217,25 @@ def newthe(liste):
                 y = data_with_lags['close']
                 X_train, X_test, y_train, y_test = X.iloc[:-süre], X.iloc[-süre:], y.iloc[:-süre], y.iloc[-süre:]
 
-                model1 = RandomForestRegressor(n_estimators=estimators, random_state=randomstate)
-                model2 = GradientBoostingRegressor(n_estimators=estimators, random_state=randomstate)
-                model3 = AdaBoostRegressor(n_estimators=estimators, random_state=randomstate)
-                model4 = XGBRegressor(n_estimators=estimators, random_state=randomstate)
-                model5 = LGBMRegressor(n_estimators=estimators, random_state=randomstate,force_col_wise=True)
+                models = {
+                    'rf': RandomForestRegressor(n_estimators=estimators, random_state=42),
+                    'gb': GradientBoostingRegressor(n_estimators=estimators, learning_rate=0.1, max_depth=3,
+                                                    random_state=42),
+                    'ab': AdaBoostRegressor(n_estimators=estimators, learning_rate=1.0, random_state=42),
+                    'xgb': XGBRegressor(n_estimators=estimators, learning_rate=0.1, max_depth=6, random_state=42,
+                                        verbosity=0),
+                    'lgbm': LGBMRegressor(n_estimators=estimators, learning_rate=0.05, random_state=42, verbosity=-1)
+                }
 
-                ensemble_model = VotingRegressor(estimators=[
-                    ('rf', model1),
-                    ('gb', model2),
-                    ('ab', model3),
-                    ('xgb', model4),
-                    ('lgbm', model5)])
 
+                ensemble_model = VotingRegressor(estimators=[(name, model) for name, model in models.items()])
+
+                # Ensemble modelini eğit
                 ensemble_model.fit(X_train, y_train)
-                rmse=mean_squared_error(y_test, ensemble_model.predict(X_test), squared=False)
+
 
                 future_predictions = []
                 last_known_features = X_test.iloc[-1].values
-
                 for i in range(süre):
                     prediction = ensemble_model.predict(last_known_features.reshape(1, -1))[0]
                     future_predictions.append(prediction)
@@ -232,11 +243,15 @@ def newthe(liste):
                     # Gecikmeli özellikleri güncelleyin
                     last_known_features = np.roll(last_known_features, -1)
                     last_known_features[-1] = prediction
+                beklenen_rmse=ortalama/(ortalama*ortalama)
+                y_pred = ensemble_model.predict(X_test)
+                rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 
                 seventh_day_prediction = future_predictions[-1]
-                if rmse > beklenen_rmse:
-                    print(Fore.RED +symbol+ " RMSE YÜKSEK: " + str(rmse) + Style.RESET_ALL)
-                else:
+                if rmse > beklenen_rmse or rmse > 0.1:
+                    print(Fore.RED + "BEKLENEN RMSE: " + str(beklenen_rmse) + Style.RESET_ALL)
+                    print(Fore.RED +symbol+ " YÜKSEK RMSE: " + str(rmse) + Style.RESET_ALL)
+                elif rmse <= beklenen_rmse or rmse <=0.1:
                     if seventh_day_prediction > data[['close']].tail(1).values[0][0]:
                         difference_percent=((seventh_day_prediction-data[['close']].tail(1).values[0][0])/data[['close']].tail(1).values[0][0])*100
                         if difference_percent>beklenen_degisim:
@@ -257,10 +272,15 @@ def newthe(liste):
                             print(Fore.RED + "Değişim oranı yetersiz: " + str(difference_percent) + "%" + Style.RESET_ALL)
                     else:
                         print(Fore.RED + symbol+" yetersiz .....değişim : "+str(seventh_day_prediction-data[['close']].tail(1).values[0][0]) + Style.RESET_ALL)
+                else:
+                    print(Fore.RED + "BEKLENEN RMSE: " + str(beklenen_rmse) + Style.RESET_ALL)
+                    print(Fore.RED + symbol + " YÜKSEK RMSE: " + str(rmse) + Style.RESET_ALL)
             elif data['Signal'].iloc[-1] <=-3:
                 print(Fore.RED + symbol + " Düşecek!!! " + Style.RESET_ALL)
 
                 add_data_sell=pd.DataFrame({'symbol':[symbol],'close':[data[['close']].tail(1).values[0][0]],'date':[datetime.now().strftime("%d.%m.%Y")]})
+                sell = sell.dropna(axis=1, how='all')
+                add_data_sell = add_data_sell.dropna(axis=1, how='all')
                 sell=pd.concat([sell,add_data_sell],ignore_index=True)
             else:
                 print(Fore.RED + symbol + " sinyal gücü!  : " +str(data['Signal'].iloc[-1])+ Style.RESET_ALL)
@@ -272,6 +292,8 @@ def newthe(liste):
     file='buy_list.xlsx'
     old_data=pd.read_excel(file)
     sepet=sepet.sort_values(by='difference', ascending=False)
+    sepet.dropna()
+    old_data.dropna()
     buylist = pd.concat([old_data, sepet], ignore_index=True)
     send_telegram_message("Buy sinyali verenler: " )
     send_telegram_message(str(sepet))
@@ -284,6 +306,70 @@ def newthe(liste):
     dfsell.to_excel('sell_list.xlsx')
     send_telegram_file('sell_list.xlsx')
     send_telegram_file('buy_list.xlsx')
+
+def gpt():
+    import matplotlib.pyplot as plt
+    from statsmodels.tsa.arima.model import ARIMA
+    from statsmodels.tsa.statespace.sarimax import SARIMAX
+    from sklearn.preprocessing import MinMaxScaler
+
+    for symbol in liste:
+
+        def load_data(symbol, start, end):
+            data = yf.download(symbol, start=start, end=end, interval='1d', progress=False)
+            data['close'] = data['Close']
+            return data
+
+        # Veri hazırlığı
+        def preprocess_data(df):
+            scaler = MinMaxScaler(feature_range=(0, 1))
+            scaled_data = scaler.fit_transform(df[['close']].values)
+            return scaled_data, scaler
+
+        # ARIMA modeli oluşturma ve tahmin yapma
+        def arima_forecast(train_data):
+            model = ARIMA(train_data, order=(5, 1, 0))
+            model_fit = model.fit()
+            forecast = model_fit.forecast(steps=30)
+            return forecast
+
+        # SARIMA modeli oluşturma ve tahmin yapma
+        def sarima_forecast(train_data):
+            model = SARIMAX(train_data, order=(5, 1, 0), seasonal_order=(1, 1, 1, 30))
+            model_fit = model.fit()
+            forecast = model_fit.forecast(steps=30)
+            return forecast
+
+        # Tahminleri birleştirme
+        def combined_forecast(arima_forecast, sarima_forecast):
+            combined = (arima_forecast + sarima_forecast) / 2
+            return combined
+
+        # Ana fonksiyon
+        def main():
+            symbol = 'BTC-USD'  # Kripto sembolü
+            start = '2020-01-01'  # Başlangıç tarihi
+            end = '2023-12-31'  # Bitiş tarihi
+
+            df = load_data(symbol, start, end)
+            scaled_data, scaler = preprocess_data(df)
+
+            train_data = scaled_data[:int(len(scaled_data) * 0.8)]
+            test_data = scaled_data[int(len(scaled_data) * 0.8):]
+
+            arima_forecast = arima_forecast(train_data)
+            sarima_forecast = sarima_forecast(train_data)
+
+            forecast = combined_forecast(arima_forecast, sarima_forecast)
+            forecast = scaler.inverse_transform(forecast.reshape(-1, 1))
+
+            plt.plot(df.index[-len(forecast):], forecast, label='Tahmin')
+            plt.plot(df.index, df['close'], label='Gerçek')
+            plt.legend()
+            plt.show()
+
+        if __name__ == "__main__":
+            main()
 
 
 while True:
