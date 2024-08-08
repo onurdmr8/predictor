@@ -1,6 +1,7 @@
 import time
 import requests
 import json
+from sklearn.preprocessing import MinMaxScaler
 from colorama import Fore, Style
 import warnings
 import yfinance as yf
@@ -15,6 +16,9 @@ from binance.client import Client
 from pmdarima import auto_arima
 import traceback
 import openpyxl
+import statsmodels.api as sm
+from sklearn.neural_network import MLPRegressor
+from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, AdaBoostRegressor
 from sklearn.ensemble import VotingRegressor
@@ -36,7 +40,7 @@ api_secret = 'SGNelarbzwvaFVRpQXhfeX9EPbLFRYIIKi8B2PloNTepvT6Q12LIYsCXbgkn8DGF'
 end = datetime.now() + timedelta(days=1)
 end = end.strftime("%Y-%m-%d")
 
-startdate = datetime.now() - timedelta(days=980)
+startdate = datetime.now() - timedelta(days=999)
 startdate = startdate.strftime("%Y-%m-%d")
 
 def send_telegram_message(message):
@@ -132,15 +136,11 @@ print(str("bist: "+str(len(bist))))
 def newthe(liste):
     sepet = pd.DataFrame(columns=["symbol","close","difference",
                                   "forecast","date",
-                                  "hedef_tarih","rmse"])
-    estimators=150
+                                  "hedef_tarih","MAPE"])
     süre=7
-
-    beklenen_sinyal=3
-    randomstate=42
+    beklenen_sinyal=1
     sell=pd.DataFrame(columns=["symbol","close","date"])
     say1 = 0
-
     for symbol in liste:
         say1 += 1
 
@@ -216,20 +216,42 @@ def newthe(liste):
                                          'SMA Signal','BB Signal', 'EMA Signal', 'Signal'],axis=1)
                 y = data_with_lags['close']
                 X_train, X_test, y_train, y_test = X.iloc[:-süre], X.iloc[-süre:], y.iloc[:-süre], y.iloc[-süre:]
+                from catboost import CatBoostRegressor
+                from sklearn.svm import SVR
+                from sklearn.linear_model import LinearRegression, Ridge, Lasso
+                from sklearn.neighbors import KNeighborsRegressor
+                estimators1={10,100,50,150,200}
+                for estimators in estimators1:
+                    models = {
+                        'rf': RandomForestRegressor(n_estimators=estimators, random_state=int(ortalama)),
+                        'gb': GradientBoostingRegressor(n_estimators=estimators, learning_rate=0.1, max_depth=3,
+                                                        random_state=int(ortalama)),
+                        'ab': AdaBoostRegressor(n_estimators=estimators, learning_rate=1.0, random_state=int(ortalama)),
+                        'xgb': XGBRegressor(n_estimators=estimators, learning_rate=0.1, max_depth=6, random_state=int(ortalama),
+                                            verbosity=0),
+                        'lgbm': LGBMRegressor(n_estimators=estimators, learning_rate=0.05, random_state=int(ortalama), verbosity=-1)
+                    }
 
-                models = {
-                    'rf': RandomForestRegressor(n_estimators=estimators, random_state=42),
-                    'gb': GradientBoostingRegressor(n_estimators=estimators, learning_rate=0.1, max_depth=3,
-                                                    random_state=42),
-                    'ab': AdaBoostRegressor(n_estimators=estimators, learning_rate=1.0, random_state=42),
-                    'xgb': XGBRegressor(n_estimators=estimators, learning_rate=0.1, max_depth=6, random_state=42,
-                                        verbosity=0),
-                    'lgbm': LGBMRegressor(n_estimators=estimators, learning_rate=0.05, random_state=42, verbosity=-1)
-                }
+                from sklearn.model_selection import cross_val_score
 
+                # Modelleri ve performanslarını depolamak için bir sözlük
+                model_performance = {}
 
-                ensemble_model = VotingRegressor(estimators=[(name, model) for name, model in models.items()])
+                # Modelleri deneyin ve performanslarını değerlendirin
+                for name, model in models.items():
+                    scores = cross_val_score(model, X_train, y_train, cv=5, scoring='neg_mean_squared_error')
+                    model_performance[name] = np.mean(np.sqrt(-scores))
 
+                # Performansları karşılaştırın
+                sorted_models = sorted(model_performance.items(), key=lambda x: x[1])
+                best_models = sorted_models[:5]  # En iyi 5 modeli seçin
+
+                # Seçilen modellerle ensemble modeli oluşturun
+                best_model_objects = [(name, models[name]) for name, _ in best_models]
+                ensemble_model = VotingRegressor(estimators=best_model_objects)
+
+                # Ensemble modelini eğitin
+                ensemble_model.fit(X_train, y_train)
                 # Ensemble modelini eğit
                 ensemble_model.fit(X_train, y_train)
 
@@ -243,15 +265,17 @@ def newthe(liste):
                     # Gecikmeli özellikleri güncelleyin
                     last_known_features = np.roll(last_known_features, -1)
                     last_known_features[-1] = prediction
-                beklenen_rmse=ortalama/(ortalama*ortalama)
+
                 y_pred = ensemble_model.predict(X_test)
-                rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+                beklenen_MAPE = 10
+                MAPE=np.mean(np.abs((y_test - y_pred) / y_test)) * 100
 
                 seventh_day_prediction = future_predictions[-1]
-                if rmse > beklenen_rmse or rmse > 0.1:
-                    print(Fore.RED + "BEKLENEN RMSE: " + str(beklenen_rmse) + Style.RESET_ALL)
-                    print(Fore.RED +symbol+ " YÜKSEK RMSE: " + str(rmse) + Style.RESET_ALL)
-                elif rmse <= beklenen_rmse or rmse <=0.1:
+                if MAPE > beklenen_MAPE:
+                    print(Fore.RED + "BEKLENEN RMSE: " + str(beklenen_MAPE) + Style.RESET_ALL)
+                    print(Fore.RED +symbol+ " YÜKSEK RMSE: " + str(MAPE) + Style.RESET_ALL)
+                elif MAPE <= beklenen_MAPE:
+
                     if seventh_day_prediction > data[['close']].tail(1).values[0][0]:
                         difference_percent=((seventh_day_prediction-data[['close']].tail(1).values[0][0])/data[['close']].tail(1).values[0][0])*100
                         if difference_percent>beklenen_degisim:
@@ -264,7 +288,7 @@ def newthe(liste):
                                                    'forecast':[seventh_day_prediction],
                                                    'date':[datetime.now().strftime("%d.%m.%Y")],
                                                    'hedef_tarih':[hedef_tarih],
-                                                   'rmse':[rmse]})
+                                                   'MAPE':[MAPE]})
                             add_data = add_data.dropna(axis=1, how='all')
                             sepet=pd.concat([sepet,add_data],ignore_index=True)
 
@@ -273,8 +297,8 @@ def newthe(liste):
                     else:
                         print(Fore.RED + symbol+" yetersiz .....değişim : "+str(seventh_day_prediction-data[['close']].tail(1).values[0][0]) + Style.RESET_ALL)
                 else:
-                    print(Fore.RED + "BEKLENEN RMSE: " + str(beklenen_rmse) + Style.RESET_ALL)
-                    print(Fore.RED + symbol + " YÜKSEK RMSE: " + str(rmse) + Style.RESET_ALL)
+                    print(Fore.RED + "BEKLENEN RMSE: " + str(beklenen_MAPE) + Style.RESET_ALL)
+                    print(Fore.RED + symbol + " YÜKSEK RMSE: " + str(MAPE) + Style.RESET_ALL)
             elif data['Signal'].iloc[-1] <=-3:
                 print(Fore.RED + symbol + " Düşecek!!! " + Style.RESET_ALL)
 
@@ -306,70 +330,6 @@ def newthe(liste):
     dfsell.to_excel('sell_list.xlsx')
     send_telegram_file('sell_list.xlsx')
     send_telegram_file('buy_list.xlsx')
-
-def gpt():
-    import matplotlib.pyplot as plt
-    from statsmodels.tsa.arima.model import ARIMA
-    from statsmodels.tsa.statespace.sarimax import SARIMAX
-    from sklearn.preprocessing import MinMaxScaler
-
-    for symbol in liste:
-
-        def load_data(symbol, start, end):
-            data = yf.download(symbol, start=start, end=end, interval='1d', progress=False)
-            data['close'] = data['Close']
-            return data
-
-        # Veri hazırlığı
-        def preprocess_data(df):
-            scaler = MinMaxScaler(feature_range=(0, 1))
-            scaled_data = scaler.fit_transform(df[['close']].values)
-            return scaled_data, scaler
-
-        # ARIMA modeli oluşturma ve tahmin yapma
-        def arima_forecast(train_data):
-            model = ARIMA(train_data, order=(5, 1, 0))
-            model_fit = model.fit()
-            forecast = model_fit.forecast(steps=30)
-            return forecast
-
-        # SARIMA modeli oluşturma ve tahmin yapma
-        def sarima_forecast(train_data):
-            model = SARIMAX(train_data, order=(5, 1, 0), seasonal_order=(1, 1, 1, 30))
-            model_fit = model.fit()
-            forecast = model_fit.forecast(steps=30)
-            return forecast
-
-        # Tahminleri birleştirme
-        def combined_forecast(arima_forecast, sarima_forecast):
-            combined = (arima_forecast + sarima_forecast) / 2
-            return combined
-
-        # Ana fonksiyon
-        def main():
-            symbol = 'BTC-USD'  # Kripto sembolü
-            start = '2020-01-01'  # Başlangıç tarihi
-            end = '2023-12-31'  # Bitiş tarihi
-
-            df = load_data(symbol, start, end)
-            scaled_data, scaler = preprocess_data(df)
-
-            train_data = scaled_data[:int(len(scaled_data) * 0.8)]
-            test_data = scaled_data[int(len(scaled_data) * 0.8):]
-
-            arima_forecast = arima_forecast(train_data)
-            sarima_forecast = sarima_forecast(train_data)
-
-            forecast = combined_forecast(arima_forecast, sarima_forecast)
-            forecast = scaler.inverse_transform(forecast.reshape(-1, 1))
-
-            plt.plot(df.index[-len(forecast):], forecast, label='Tahmin')
-            plt.plot(df.index, df['close'], label='Gerçek')
-            plt.legend()
-            plt.show()
-
-        if __name__ == "__main__":
-            main()
 
 
 while True:
