@@ -272,8 +272,8 @@ def newthe(liste):
 
                 seventh_day_prediction = future_predictions[-1]
                 if MAPE > beklenen_MAPE:
-                    print(Fore.RED + "BEKLENEN RMSE: " + str(beklenen_MAPE) + Style.RESET_ALL)
-                    print(Fore.RED +symbol+ " YÜKSEK RMSE: " + str(MAPE) + Style.RESET_ALL)
+                    print(Fore.RED + "BEKLENEN MAPE: " + str(beklenen_MAPE) + Style.RESET_ALL)
+                    print(Fore.RED +symbol+ " YÜKSEK MAPE: " + str(MAPE) + Style.RESET_ALL)
                 elif MAPE <= beklenen_MAPE:
 
                     if seventh_day_prediction > data[['close']].tail(1).values[0][0]:
