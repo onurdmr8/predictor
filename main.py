@@ -320,6 +320,7 @@ def newthe(liste,end=end):
     send_telegram_file('buy_list.xlsx')
 
 
+
 if st.button("Analiz"):
     while True:
         baslangıc=datetime.now()
